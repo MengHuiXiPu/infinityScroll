@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="J_wrap" class="wrap">
+        <ul id="m-listContainer">
+            <li id="item-first"></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li id="item-last"></li>
+        </ul>
+    </div>
+</body>
+
+</html>
+<style>
+    ul,
+    li {
+        margin: 0;
+        padding: 0;
+    }
+
+    li {
+        list-style: none;
+    }
+
+    /* .wrap{padding: 10px;} */
+
+    #m-listContainer li {
+        height: 150px;
+        font-size: 25px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: red;
+    }
+
+    #m-listContainer li:nth-of-type(2n) {
+        background: #fff;
+    }
+
+    #m-listContainer li:nth-of-type(2n+1) {
+        background: #999;
+    }
+</style>
+<script>
+    class ListScroll {
+        constructor(options) {
+            this.opsCheck(options);
+        }
+
+        // 传入属性检查
+        opsCheck(ops) {
+            // options
+            const {
+                fId,
+                lId,
+                iHeight,
+                container,
+                listSize,
+                renderFunction
+            } = ops;
+
+            this.iHeight = iHeight;
+            this.fId = fId;
+            this.lId = lId;
+            this.container = container;
+            this.listSize = listSize;
+            this.renderFunction = renderFunction;
+
+            this.firstItem = document.getElementById(fId);
+            this.lastItem = document.getElementById(lId);
+
+            this.Cache = {
+                cTop: 0,
+                cBottom: 0,
+                topY: 0,
+                topRatio: 0,
+                bottomY: 0,
+                bottomRatio: 0,
+                cIndex: 0
+            };
+        }
+
+        updateCache(params) {
+            Object.assign(this.Cache, params);
+        }
+
+        // 动态调整容器padding实现滚动
+        // eslint-disable-next-line class-methods-use-this
+        adjustPaddings(isScrollDown) {
+            const {
+                container,
+                iHeight
+            } = this;
+            const {
+                cTop,
+                cBottom
+            } = this.Cache;
+
+            let newcTop, newcBottom;
+
+            // TODO 150待抽象
+            const calPadding = iHeight * (Math.floor(this.listSize / 2));
+
+            if (isScrollDown) {
+                newcTop = cTop + calPadding;
+
+                if (cBottom === 0) {
+                    newcBottom = 0;
+                } else {
+                    newcBottom = cBottom - calPadding;
+                }
+            } else {
+                newcBottom = cBottom + calPadding;
+
+                if (cTop === 0) {
+                    newcTop = 0;
+                } else {
+                    newcTop = cTop - calPadding;
+                }
+            }
+
+            container.style.paddingBottom = `${newcBottom}px`;
+            container.style.paddingTop = `${newcTop}px`;
+
+            this.updateCache({
+                cTop: newcTop,
+                cBottom: newcBottom
+            });
+        }
+
+        getWindowFirstIndex = (isScrollDown) => {
+            const {
+                cIndex
+            } = this.Cache;
+
+            // 以全部容器内所有元素的一半作为增量
+            const increment = Math.floor(this.listSize / 2);
+
+            let firstIndex;
+
+            if (isScrollDown) {
+                firstIndex = cIndex + increment;
+            } else {
+                firstIndex = cIndex - increment;
+            }
+
+            if (firstIndex < 0) {
+                firstIndex = 0;
+            }
+
+            return firstIndex;
+        }
+
+        topItemCb(entry) {
+            const {
+                topY,
+                topRatio
+            } = this.Cache;
+
+            const cY = entry.boundingClientRect.top;
+            const cRatio = entry.intersectionRatio;
+            const isIntersecting = entry.isIntersecting;
+
+            // 上滑精准判定 =>
+            // 保证是在隐藏后再次上拉出现第一个、并且再cIndex变化(cIndex !== 0)之后，
+            // 否则可能反复（隐藏 -> 出现) 的操作出现多次rendering
+            if (
+                cY > topY &&
+                isIntersecting &&
+                cRatio >= topRatio
+            ) {
+                console.log('topSentCallback.. go');
+                const firstIndex = this.getWindowFirstIndex(false);
+                this.renderFunction(firstIndex);
+                this.adjustPaddings(false);
+
+                this.updateCache({
+                    cIndex: firstIndex,
+                    topY: cY,
+                    topRatio: cRatio
+                });
+            } else {
+                this.updateCache({
+                    topY: cY,
+                    topRatio: cRatio
+                });
+            }
+        }
+
+        bottomItemCb(entry) {
+            const {
+                bottomY,
+                bottomRatio
+            } = this.Cache;
+
+            // TODO：hasMore => 外层控制
+            // if (cIndex === DBSize - listSize) {
+            //     return;
+            // }
+
+            const cY = entry.boundingClientRect.top;
+            const cRatio = entry.intersectionRatio;
+            const isIntersecting = entry.isIntersecting;
+
+            // 下滑精准判定 => TODO 更深入明确理解
+            if (
+                cY < bottomY &&
+                cRatio >= bottomRatio &&
+                isIntersecting
+            ) {
+                console.log('botSentCallback.. go');
+                const firstIndex = this.getWindowFirstIndex(true);
+
+                this.renderFunction(firstIndex);
+                this.adjustPaddings(true);
+
+                this.updateCache({
+                    cIndex: firstIndex,
+                    bottomY: cY,
+                    bottomRatio: cRatio
+                });
+            } else {
+                this.updateCache({
+                    bottomY: cY,
+                    bottomRatio: cRatio
+                });
+            }
+        }
+
+        // 节点监测
+        initIntersectionObserver() {
+            const options = {
+                // root: this.container
+            };
+
+            // 观察元素开始进入视窗或者完全离开视窗的时候都会触发
+            const callback = (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.target.id === this.fId) {
+                        this.topItemCb(entry);
+                    } else if (entry.target.id === this.lId) {
+                        this.bottomItemCb(entry);
+                    }
+                });
+            };
+
+            this.observer = new IntersectionObserver(callback, options);
+
+            // 观察列表第一个以及最后一个元素
+            this.observer.observe(this.firstItem);
+            this.observer.observe(this.lastItem);
+        }
+
+        // 开始监测
+        startObserver() {
+            this.initIntersectionObserver();
+        }
+
+        // 停止监测
+        // stopObserver() {}
+    }
+
+
+
+
+
+    const container = document.getElementById('m-listContainer');
+    const lis = document.querySelectorAll('#m-listContainer li');
+
+    console.log(container, lis)
+    // const dbData = Array.from(new Array(20)).map((item, idx) => idx);
+
+    const renderPage = (firstIndex) => {
+        lis.forEach((item, idx) => {
+            const li = item;
+            li.innerHTML = firstIndex + idx;
+        });
+    };
+
+    // const updateDb = (offset, limit = 10) => {
+    //     for (let i = 0; i < limit; i++) {
+    //         dbData.push(offset + i);
+    //     }
+    // };
+
+    renderPage(0);
+
+    const renderFunction = (firstIndex) => {
+        renderPage(firstIndex);
+    };
+
+    const listScrollIns = new ListScroll({
+        fId: 'item-first',
+        lId: 'item-last',
+        container,
+        listSize: 21,
+        iHeight: 150,
+        renderFunction
+    });
+
+    listScrollIns.startObserver();
+</script>
